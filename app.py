@@ -14,14 +14,11 @@ from Data_cleaning_Syria import (
     merge_food
 )
 
-# ----------------------------
 # GLOBAL PROJECT PATH
-# ----------------------------
 BASE_DIR = Path(__file__).resolve().parent
 
-# ----------------------------
+
 # PAGE SETUP
-# ----------------------------
 st.set_page_config(
     page_title="Syria Conflict Dashboard",
     layout="wide",
@@ -33,9 +30,8 @@ st.caption(
     "Track protests, violence, food prices, and district-level regression results across Syrian regions."
 )
 
-# ----------------------------
+
 # LOAD DATA
-# ----------------------------
 @st.cache_data
 def load_data():
     acled_path = BASE_DIR / "data" / "acled_syria.csv"
@@ -93,9 +89,8 @@ def load_map():
 df_panel_base, food = load_data()
 gdf = load_map()
 
-# ----------------------------
+
 # SIDEBAR
-# ----------------------------
 st.sidebar.header("Controls")
 
 metric = st.sidebar.selectbox(
@@ -166,9 +161,7 @@ map_zoom_mode = st.sidebar.radio(
     ["Overall map", "Zoom to selected district"]
 )
 
-# ----------------------------
 # PREP DATA
-# ----------------------------
 df_panel = merge_food(df_panel_base, food, selected_category)
 
 df_panel["civilian_targeting_lag1"] = (
@@ -203,9 +196,7 @@ region_data = (
     else df_filtered[df_filtered["admin1"] == region].copy()
 )
 
-# ----------------------------
 # KPI ROW
-# ----------------------------
 k1, k2, k3, k4 = st.columns(4)
 k1.metric("Region", region)
 k2.metric("Years", f"{year_range[0]}–{year_range[1]}")
@@ -214,9 +205,7 @@ k4.metric("Food Category", selected_category if metric in food_metrics else "N/A
 
 st.divider()
 
-# ----------------------------
 # HELPERS
-# ----------------------------
 def summarize(data):
     if time_unit == "Yearly":
         summary = data.groupby("year").agg({
@@ -301,9 +290,7 @@ def get_map_view(gdf_map):
     return centroid.y, centroid.x, 5.9
 
 
-# ----------------------------
 # GRAPH
-# ----------------------------
 st.subheader(metric)
 st.caption("Chart view for selected filters.")
 
@@ -377,9 +364,7 @@ st.pyplot(fig, use_container_width=True)
 
 st.divider()
 
-# ----------------------------
 # MAP
-# ----------------------------
 st.subheader(f"{metric} Map")
 st.caption("Map view across districts.")
 
@@ -412,9 +397,7 @@ st.plotly_chart(fig_map, width="stretch")
 
 st.divider()
 
-# ----------------------------
 # REGRESSIONS
-# ----------------------------
 st.subheader("District-Level Regression Results")
 
 @st.cache_data

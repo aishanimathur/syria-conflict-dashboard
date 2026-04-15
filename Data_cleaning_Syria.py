@@ -1,9 +1,6 @@
 import pandas as pd
 
-
-# ----------------------------
-# LOAD + CLEAN ACLED
-# ----------------------------
+# LOAD ACLED
 def load_clean_acled(path):
     df = pd.read_csv(path)
 
@@ -23,11 +20,7 @@ def load_clean_acled(path):
     })
 
     return df
-
-
-# ----------------------------
 # LOAD + CLEAN FOOD DATA
-# ----------------------------
 def load_clean_food(path):
     food = pd.read_csv(path)
 
@@ -50,10 +43,7 @@ def load_clean_food(path):
 
     return food
 
-
-# ----------------------------
 # BUILD PANEL
-# ----------------------------
 def build_conflict_panel(acled):
     acled["protest_flag"] = (acled["event_type"] == "Protests").astype(int)
     acled["civilian_targeting_flag"] = (
@@ -100,10 +90,7 @@ def build_conflict_panel(acled):
 
     return panel
 
-
-# ----------------------------
 # ADD FOOD DATA
-# ----------------------------
 def merge_food(panel, food, category="All categories"):
 
     if category != "All categories":
@@ -117,7 +104,7 @@ def merge_food(panel, food, category="All categories"):
 
     merged = pd.merge(panel, food_region, on=["admin1", "month"], how="left")
 
-    # correct fill (IMPORTANT)
+    # correct fill 
     merged["price"] = (
         merged.groupby("admin1")["price"]
         .transform(lambda x: x.ffill().bfill())
@@ -127,10 +114,7 @@ def merge_food(panel, food, category="All categories"):
 
     return merged
 
-
-# ----------------------------
 # DEBUG FUNCTION
-# ----------------------------
 def check_missing_regions(panel, food):
     acled_regions = set(panel["admin1"].unique())
     food_regions = set(food["admin1"].unique())
@@ -141,9 +125,7 @@ def check_missing_regions(panel, food):
     }
 
 
-# ----------------------------
 # SAFE DEBUG BLOCK
-# ----------------------------
 if __name__ == "__main__":
     acled = load_clean_acled("/Users/aishanimathur/Downloads/ACLED Data_2026-03-18.csv")
     food = load_clean_food("/Users/aishanimathur/Downloads/wfp_food_prices_syr (1).csv")
