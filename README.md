@@ -1,25 +1,38 @@
 # Syria Conflict Dashboard
 
-An interactive Streamlit dashboard that explores conflict dynamics across Syrian regions using ACLED and food price data.
+An interactive Streamlit dashboard analyzing conflict dynamics across Syrian regions using ACLED conflict data and food price data.
+
+## Live Dashboard
+🔗 https://syria-conflict-dashboard.streamlit.app/
+
+**Note:** If the app has been inactive, it may need a few seconds to wake up on first load.
 
 ## Research Focus
-The dashboard examines whether protest activity is associated with:
 
-- Food price changes
-- Regime repression (proxied by civilian targeting)
-- The interaction between economic shocks and repression
+This project examines whether protest activity is associated with:
 
-In the regression framework:
+- Lagged food price changes  
+- Lagged repression (proxied by civilian targeting)  
+- The interaction between economic shocks and repression  
 
-- Dependent variable: Protests
-- Independent variables:
-  - Lagged food price change
-  - Lagged civilian targeting
-  - Interaction term between the two
+## Regression Framework
+
+- **Dependent Variable:** Protests  
+- **Independent Variables:**  
+  - Lagged food price change  
+  - Lagged civilian targeting  
+  - Interaction term
 
 ## Dashboard Features
-- Track protests, battles, riots, remote violence, and civilian targeting
-- Monitor food prices across regions
-- Compare two regions over time
-- Interactive district-level map
+
+- Interactive dashboard interface  
+- Compare regions over time  
+- Track protests, battles, riots, remote violence, and civilian targeting  
+- Monitor food prices and price shocks  
+- District-level interactive map  
 - District-specific regression results
+
+## Run Locally
+
+```bash
+streamlit run app.py
