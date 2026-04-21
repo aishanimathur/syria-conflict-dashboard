@@ -17,7 +17,6 @@ from Data_cleaning_Syria import (
 # GLOBAL PROJECT PATH
 BASE_DIR = Path(__file__).resolve().parent
 
-
 # PAGE SETUP
 st.set_page_config(
     page_title="Syria Conflict Dashboard",
@@ -29,7 +28,6 @@ st.title("Syria Conflict Dashboard")
 st.caption(
     "Track protests, violence, food prices, and district-level regression results across Syrian regions."
 )
-
 
 # LOAD DATA
 @st.cache_data
@@ -88,7 +86,6 @@ def load_map():
 
 df_panel_base, food = load_data()
 gdf = load_map()
-
 
 # SIDEBAR
 st.sidebar.header("Controls")
@@ -196,6 +193,10 @@ region_data = (
     else df_filtered[df_filtered["admin1"] == region].copy()
 )
 
+region2_data = None
+if compare and region2 is not None:
+    region2_data = df_filtered[df_filtered["admin1"] == region2].copy()
+
 # KPI ROW
 k1, k2, k3, k4 = st.columns(4)
 k1.metric("Region", region)
@@ -298,39 +299,64 @@ fig, ax = plt.subplots(figsize=(10, 5.5))
 
 summary, x = summarize(region_data)
 
-if metric == "Protests":
-    ax.plot(x, summary["protests"], linewidth=2)
-elif metric == "Civilian Targeting":
-    ax.plot(x, summary["civilian_targeting"], linewidth=2)
-elif metric == "Battles":
-    ax.plot(x, summary["battles"], linewidth=2)
-elif metric == "Remote Violence":
-    ax.plot(x, summary["remote_violence"], linewidth=2)
-elif metric == "Riots":
-    ax.plot(x, summary["riots"], linewidth=2)
-elif metric == "Food Prices":
-    ax.plot(x, summary["price"], linewidth=2)
-elif metric == "Food Price Change":
-    ax.plot(x, summary["price_change"], linewidth=2)
-elif metric == "Protests vs Food Prices":
-    ax.scatter(region_data["price"], region_data["protests"], alpha=0.7)
-    ax.set_xlabel("Food Price")
-    ax.set_ylabel("Protests")
-elif metric == "Protests vs Food Price Change":
-    ax.scatter(region_data["price_change"], region_data["protests"], alpha=0.7)
-    ax.set_xlabel("Food Price Change")
-    ax.set_ylabel("Protests")
-elif metric == "Protests vs Food Price Change (Lagged)":
-    ax.scatter(region_data["price_change_lag1"], region_data["protests"], alpha=0.7)
-    ax.set_xlabel("Lagged Food Price Change")
-    ax.set_ylabel("Protests")
-elif metric == "Protests vs Civilian Targeting (Lagged)":
-    ax.scatter(region_data["civilian_targeting_lag1"], region_data["protests"], alpha=0.7)
-    ax.set_xlabel("Lagged Civilian Targeting")
-    ax.set_ylabel("Protests")
+summary2, x2 = (None, None)
+if region2_data is not None and not region2_data.empty:
+    summary2, x2 = summarize(region2_data)
+
+line_metrics = {
+    "Protests": "protests",
+    "Civilian Targeting": "civilian_targeting",
+    "Battles": "battles",
+    "Remote Violence": "remote_violence",
+    "Riots": "riots",
+    "Food Prices": "price",
+    "Food Price Change": "price_change"
+}
+
+scatter_metrics = {
+    "Protests vs Food Prices": ("price", "protests", "Food Price", "Protests"),
+    "Protests vs Food Price Change": ("price_change", "protests", "Food Price Change", "Protests"),
+    "Protests vs Food Price Change (Lagged)": ("price_change_lag1", "protests", "Lagged Food Price Change", "Protests"),
+    "Protests vs Civilian Targeting (Lagged)": ("civilian_targeting_lag1", "protests", "Lagged Civilian Targeting", "Protests")
+}
+
+if metric in line_metrics:
+    col = line_metrics[metric]
+
+    ax.plot(x, summary[col], linewidth=2, label=region)
+
+    if summary2 is not None:
+        ax.plot(x2, summary2[col], linewidth=2, linestyle="--", label=region2)
+
+    format_axis(ax, x)
+    ax.set_xlabel("Time")
+    ax.set_ylabel(metric)
+    ax.legend()
+
+elif metric in scatter_metrics:
+    xcol, ycol, xlabel, ylabel = scatter_metrics[metric]
+
+    ax.scatter(region_data[xcol], region_data[ycol], alpha=0.7, label=region)
+
+    if region2_data is not None:
+        ax.scatter(region2_data[xcol], region2_data[ycol], alpha=0.7, label=region2)
+
+    ax.set_xlabel(xlabel)
+    ax.set_ylabel(ylabel)
+    ax.legend()
+
 elif metric == "Total Protests by Repression":
     tmp = region_data.groupby("repression_level", observed=False)["protests"].sum()
-    ax.bar(tmp.index.astype(str), tmp.values)
+    ax.bar(tmp.index.astype(str), tmp.values, label=region, alpha=0.8)
+
+    if region2_data is not None:
+        tmp2 = region2_data.groupby("repression_level", observed=False)["protests"].sum()
+        ax.plot(tmp2.index.astype(str), tmp2.values, marker="o", linestyle="--", label=region2)
+
+    ax.set_xlabel("Repression Level")
+    ax.set_ylabel("Total Protests")
+    ax.legend()
+
 elif metric == "Total Protests by Price Change (Binned by Repression)":
     tmp = (
         region_data.groupby(
@@ -342,21 +368,17 @@ elif metric == "Total Protests by Price Change (Binned by Repression)":
         .fillna(0)
     )
     tmp.plot(kind="bar", ax=ax)
+    ax.set_xlabel("Price Shock Bin")
+    ax.set_ylabel("Total Protests")
 
-if metric in {
-    "Protests",
-    "Civilian Targeting",
-    "Battles",
-    "Remote Violence",
-    "Riots",
-    "Food Prices",
-    "Food Price Change"
-}:
-    format_axis(ax, x)
-    ax.set_xlabel("Time")
-    ax.set_ylabel(metric)
+    if region2_data is not None:
+        st.info("Comparison mode is not yet enabled for this grouped bar chart.")
 
-ax.set_title(f"{metric} in {region}")
+title = f"{metric} in {region}"
+if region2_data is not None:
+    title += f" vs {region2}"
+
+ax.set_title(title)
 ax.grid(alpha=0.2)
 plt.tight_layout()
 
