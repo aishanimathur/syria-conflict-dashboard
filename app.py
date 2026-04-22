@@ -26,7 +26,7 @@ st.set_page_config(
 
 st.title("Syria Conflict Dashboard")
 st.caption(
-    "Track protests, violence, food prices, and district-level regression results across Syrian regions."
+    "Track protests, violence, food prices, and district-level relationship patterns across Syrian regions."
 )
 
 # LOAD DATA
@@ -100,22 +100,24 @@ metric = st.sidebar.selectbox(
         "Riots",
         "Food Prices",
         "Food Price Change",
-        "Protests vs Food Prices",
-        "Protests vs Food Price Change",
         "Protests vs Food Price Change (Lagged)",
         "Protests vs Civilian Targeting (Lagged)",
-        "Total Protests by Repression",
-        "Total Protests by Price Change (Binned by Repression)"
+        "Current Protests by Lagged Repression",
+        "Current Protests by Lagged Price Change and Lagged Repression",
+        "Do Food Prices Matter?",
+        "Does Repression Matter?",
+        "Does Repression Change the Effect of Food Prices?"
     ]
 )
 
 food_metrics = {
     "Food Prices",
     "Food Price Change",
-    "Protests vs Food Prices",
-    "Protests vs Food Price Change",
     "Protests vs Food Price Change (Lagged)",
-    "Total Protests by Price Change (Binned by Repression)"
+    "Current Protests by Lagged Price Change and Lagged Repression",
+    "Do Food Prices Matter?",
+    "Does Repression Matter?",
+    "Does Repression Change the Effect of Food Prices?"
 }
 
 food_categories = sorted(food["category"].dropna().unique())
@@ -158,6 +160,9 @@ map_zoom_mode = st.sidebar.radio(
     ["Overall map", "Zoom to selected district"]
 )
 
+# significance cutoff for regression maps
+significance_threshold = 0.05
+
 # PREP DATA
 df_panel = merge_food(df_panel_base, food, selected_category)
 
@@ -169,12 +174,16 @@ df_panel["price_change_lag1"] = (
     df_panel.groupby("admin1")["price_change"].shift(1)
 )
 
-df_panel["repression_level"] = pd.qcut(
-    df_panel["civilian_targeting_lag1"],
-    q=3,
-    labels=["Low", "Medium", "High"],
-    duplicates="drop"
-)
+valid_repression = df_panel["civilian_targeting_lag1"].dropna()
+if len(valid_repression) > 0:
+    df_panel["repression_level"] = pd.qcut(
+        df_panel["civilian_targeting_lag1"],
+        q=3,
+        labels=["Low", "Medium", "High"],
+        duplicates="drop"
+    )
+else:
+    df_panel["repression_level"] = pd.Series(dtype="object")
 
 df_panel["price_shock_bin"] = pd.cut(
     df_panel["price_change_lag1"],
@@ -269,158 +278,33 @@ def build_map_data(df):
         "Remote Violence": "remote_violence",
         "Riots": "riots",
         "Food Prices": "price",
-        "Food Price Change": "price_change",
-        "Protests vs Food Prices": "price",
-        "Protests vs Food Price Change": "price_change",
-        "Protests vs Food Price Change (Lagged)": "price_change_lag1",
-        "Protests vs Civilian Targeting (Lagged)": "civilian_targeting_lag1",
-        "Total Protests by Repression": "civilian_targeting_lag1",
-        "Total Protests by Price Change (Binned by Repression)": "price_change_lag1"
+        "Food Price Change": "price_change"
     }
 
     return grouped, mapping.get(metric, "protests")
 
 
-def get_map_view(gdf_map):
-    if map_zoom_mode == "Overall map" or region == "Overall":
-        centroid = gdf_map.geometry.union_all().centroid
-        return centroid.y, centroid.x, 5.2
+def build_correlation_map(df, x_var):
+    rows = []
 
-    selected = gdf_map[gdf_map["admin1"] == region]
-    centroid = selected.geometry.union_all().centroid
-    return centroid.y, centroid.x, 5.9
+    for district in sorted(df["admin1"].dropna().unique()):
+        sub = df[df["admin1"] == district][["protests", x_var]].dropna()
 
+        if len(sub) < 4:
+            continue
+        if sub["protests"].nunique() < 2 or sub[x_var].nunique() < 2:
+            continue
 
-# GRAPH
-st.subheader(metric)
-st.caption("Chart view for selected filters.")
+        corr = sub["protests"].corr(sub[x_var])
 
-fig, ax = plt.subplots(figsize=(10, 5.5))
+        rows.append({
+            "admin1": district,
+            "correlation": corr,
+            "n_obs": len(sub)
+        })
 
-summary, x = summarize(region_data)
+    return pd.DataFrame(rows)
 
-summary2, x2 = (None, None)
-if region2_data is not None and not region2_data.empty:
-    summary2, x2 = summarize(region2_data)
-
-line_metrics = {
-    "Protests": "protests",
-    "Civilian Targeting": "civilian_targeting",
-    "Battles": "battles",
-    "Remote Violence": "remote_violence",
-    "Riots": "riots",
-    "Food Prices": "price",
-    "Food Price Change": "price_change"
-}
-
-scatter_metrics = {
-    "Protests vs Food Prices": ("price", "protests", "Food Price", "Protests"),
-    "Protests vs Food Price Change": ("price_change", "protests", "Food Price Change", "Protests"),
-    "Protests vs Food Price Change (Lagged)": ("price_change_lag1", "protests", "Lagged Food Price Change", "Protests"),
-    "Protests vs Civilian Targeting (Lagged)": ("civilian_targeting_lag1", "protests", "Lagged Civilian Targeting", "Protests")
-}
-
-if metric in line_metrics:
-    col = line_metrics[metric]
-
-    ax.plot(x, summary[col], linewidth=2, label=region)
-
-    if summary2 is not None:
-        ax.plot(x2, summary2[col], linewidth=2, linestyle="--", label=region2)
-
-    format_axis(ax, x)
-    ax.set_xlabel("Time")
-    ax.set_ylabel(metric)
-    ax.legend()
-
-elif metric in scatter_metrics:
-    xcol, ycol, xlabel, ylabel = scatter_metrics[metric]
-
-    ax.scatter(region_data[xcol], region_data[ycol], alpha=0.7, label=region)
-
-    if region2_data is not None:
-        ax.scatter(region2_data[xcol], region2_data[ycol], alpha=0.7, label=region2)
-
-    ax.set_xlabel(xlabel)
-    ax.set_ylabel(ylabel)
-    ax.legend()
-
-elif metric == "Total Protests by Repression":
-    tmp = region_data.groupby("repression_level", observed=False)["protests"].sum()
-    ax.bar(tmp.index.astype(str), tmp.values, label=region, alpha=0.8)
-
-    if region2_data is not None:
-        tmp2 = region2_data.groupby("repression_level", observed=False)["protests"].sum()
-        ax.plot(tmp2.index.astype(str), tmp2.values, marker="o", linestyle="--", label=region2)
-
-    ax.set_xlabel("Repression Level")
-    ax.set_ylabel("Total Protests")
-    ax.legend()
-
-elif metric == "Total Protests by Price Change (Binned by Repression)":
-    tmp = (
-        region_data.groupby(
-            ["price_shock_bin", "repression_level"],
-            observed=False
-        )["protests"]
-        .sum()
-        .unstack()
-        .fillna(0)
-    )
-    tmp.plot(kind="bar", ax=ax)
-    ax.set_xlabel("Price Shock Bin")
-    ax.set_ylabel("Total Protests")
-
-    if region2_data is not None:
-        st.info("Comparison mode is not yet enabled for this grouped bar chart.")
-
-title = f"{metric} in {region}"
-if region2_data is not None:
-    title += f" vs {region2}"
-
-ax.set_title(title)
-ax.grid(alpha=0.2)
-plt.tight_layout()
-
-st.pyplot(fig, use_container_width=True)
-
-st.divider()
-
-# MAP
-st.subheader(f"{metric} Map")
-st.caption("Map view across districts.")
-
-map_df, color_col = build_map_data(df_filtered)
-choropleth = gdf.merge(map_df, on="admin1", how="left").copy()
-
-geojson = json.loads(choropleth[["admin1", "geometry"]].to_json())
-lat, lon, zoom = get_map_view(choropleth)
-
-fig_map = px.choropleth_mapbox(
-    choropleth,
-    geojson=geojson,
-    locations="admin1",
-    featureidkey="properties.admin1",
-    color=color_col,
-    hover_name="admin1",
-    color_continuous_scale="OrRd",
-    mapbox_style="white-bg",
-    center={"lat": lat, "lon": lon},
-    zoom=zoom,
-    opacity=0.82
-)
-
-fig_map.update_layout(
-    height=700,
-    margin={"r": 0, "t": 0, "l": 0, "b": 0}
-)
-
-st.plotly_chart(fig_map, width="stretch")
-
-st.divider()
-
-# REGRESSIONS
-st.subheader("District-Level Regression Results")
 
 @st.cache_data
 def run_regressions(df):
@@ -448,6 +332,22 @@ def run_regressions(df):
                 "admin1": district,
                 "n_obs": int(model.nobs),
                 "r_squared": round(model.rsquared, 3),
+                "coef_price_lag1": round(
+                    model.params.get("price_change_lag1", float("nan")),
+                    3
+                ),
+                "p_price_lag1": round(
+                    model.pvalues.get("price_change_lag1", float("nan")),
+                    3
+                ),
+                "coef_repression_lag1": round(
+                    model.params.get("civilian_targeting_lag1", float("nan")),
+                    3
+                ),
+                "p_repression_lag1": round(
+                    model.pvalues.get("civilian_targeting_lag1", float("nan")),
+                    3
+                ),
                 "coef_interaction": round(
                     model.params.get(
                         "price_change_lag1:civilian_targeting_lag1",
@@ -469,24 +369,435 @@ def run_regressions(df):
     return pd.DataFrame(rows)
 
 
-regression_results = run_regressions(df_filtered)
+def get_map_view(gdf_map):
+    if map_zoom_mode == "Overall map" or region == "Overall":
+        centroid = gdf_map.geometry.union_all().centroid
+        return centroid.y, centroid.x, 5.2
 
-if regression_results.empty:
-    st.warning("No regressions available.")
+    selected = gdf_map[gdf_map["admin1"] == region]
+    if selected.empty:
+        centroid = gdf_map.geometry.union_all().centroid
+        return centroid.y, centroid.x, 5.2
+
+    centroid = selected.geometry.union_all().centroid
+    return centroid.y, centroid.x, 5.9
+
+
+def build_scatter_data(data, xcol, ycol):
+    if time_unit == "Yearly":
+        return (
+            data.groupby("year", as_index=False)
+            .agg({
+                xcol: "mean",
+                ycol: "sum"
+            })
+            .dropna()
+        )
+    else:
+        return data[[xcol, ycol]].dropna()
+
+
+def prepare_regression_map_df(regression_results, coef_col, p_col):
+    if regression_results is not None and not regression_results.empty:
+        map_df = regression_results[
+            ["admin1", coef_col, p_col, "r_squared", "n_obs"]
+        ].copy()
+
+        map_df["coef_sig"] = map_df[coef_col].where(
+            map_df[p_col] < significance_threshold,
+            other=float("nan")
+        )
+        map_df["is_insignificant"] = map_df[p_col] >= significance_threshold
+    else:
+        map_df = pd.DataFrame(
+            columns=[
+                "admin1",
+                coef_col,
+                p_col,
+                "r_squared",
+                "n_obs",
+                "coef_sig",
+                "is_insignificant"
+            ]
+        )
+    return map_df
+
+
+# GRAPH
+regression_metrics = {
+    "Do Food Prices Matter?",
+    "Does Repression Matter?",
+    "Does Repression Change the Effect of Food Prices?"
+}
+
+st.subheader(metric)
+
+if metric in regression_metrics:
+    if metric == "Do Food Prices Matter?":
+        st.caption(
+            "Map and regression results show whether lagged food price changes predict protests across districts."
+        )
+    elif metric == "Does Repression Matter?":
+        st.caption(
+            "Map and regression results show whether lagged civilian targeting predicts protests across districts."
+        )
+    else:
+        st.caption(
+            "Map and regression results show whether repression changes the effect of lagged food price changes on protests."
+        )
+
 else:
-    st.dataframe(regression_results, width="stretch")
+    if metric == "Protests vs Food Price Change (Lagged)":
+        st.caption(
+            f"Scatterplot reflects the selected chart view ({time_unit.lower()}). "
+            "The map below remains monthly-only and shows district-level correlation "
+            "between protests and lagged food price change using monthly observations."
+        )
+    elif metric == "Protests vs Civilian Targeting (Lagged)":
+        st.caption(
+            f"Scatterplot reflects the selected chart view ({time_unit.lower()}). "
+            "The map below remains monthly-only and shows district-level correlation "
+            "between protests and lagged civilian targeting using monthly observations."
+        )
+    elif metric == "Current Protests by Lagged Repression":
+        st.caption(
+            "Bars show current protests grouped by lagged repression level."
+        )
+    elif metric == "Current Protests by Lagged Price Change and Lagged Repression":
+        st.caption(
+            "Bars show current protests grouped by lagged price change bins and lagged repression levels."
+        )
+    else:
+        st.caption("Chart view for selected filters.")
 
-    fig2, ax2 = plt.subplots(figsize=(10, 6))
-    coef_plot = regression_results.sort_values("coef_interaction")
+    fig, ax = plt.subplots(figsize=(10, 5.5))
 
-    ax2.barh(
-        coef_plot["admin1"],
-        coef_plot["coef_interaction"]
-    )
-    ax2.set_title("Interaction Effect by District")
-    ax2.set_xlabel("Coefficient")
-    ax2.set_ylabel("District")
-    ax2.grid(axis="x", alpha=0.2)
+    summary, x = summarize(region_data)
 
+    summary2, x2 = (None, None)
+    if region2_data is not None and not region2_data.empty:
+        summary2, x2 = summarize(region2_data)
+
+    line_metrics = {
+        "Protests": "protests",
+        "Civilian Targeting": "civilian_targeting",
+        "Battles": "battles",
+        "Remote Violence": "remote_violence",
+        "Riots": "riots",
+        "Food Prices": "price",
+        "Food Price Change": "price_change"
+    }
+
+    scatter_metrics = {
+        "Protests vs Food Price Change (Lagged)": (
+            "price_change_lag1",
+            "protests",
+            "Lagged Food Price Change",
+            "Protests"
+        ),
+        "Protests vs Civilian Targeting (Lagged)": (
+            "civilian_targeting_lag1",
+            "protests",
+            "Lagged Civilian Targeting",
+            "Protests"
+        )
+    }
+
+    if metric in line_metrics:
+        col = line_metrics[metric]
+
+        ax.plot(x, summary[col], linewidth=2, label=region)
+
+        if summary2 is not None:
+            ax.plot(x2, summary2[col], linewidth=2, linestyle="--", label=region2)
+
+        format_axis(ax, x)
+        ax.set_xlabel("Time")
+        ax.set_ylabel(metric)
+        ax.legend()
+
+    elif metric in scatter_metrics:
+        xcol, ycol, xlabel, ylabel = scatter_metrics[metric]
+
+        scatter_df = build_scatter_data(region_data, xcol, ycol)
+        if not scatter_df.empty:
+            ax.scatter(scatter_df[xcol], scatter_df[ycol], alpha=0.7, label=region)
+
+        if region2_data is not None:
+            scatter_df2 = build_scatter_data(region2_data, xcol, ycol)
+            if not scatter_df2.empty:
+                ax.scatter(scatter_df2[xcol], scatter_df2[ycol], alpha=0.7, label=region2)
+
+        ax.set_xlabel(xlabel)
+        ax.set_ylabel(ylabel)
+        ax.legend()
+
+    elif metric == "Current Protests by Lagged Repression":
+        tmp = region_data.groupby("repression_level", observed=False)["protests"].sum()
+        ax.bar(tmp.index.astype(str), tmp.values)
+
+        ax.set_xlabel("Lagged Repression Level")
+        ax.set_ylabel("Current Protests")
+
+    elif metric == "Current Protests by Lagged Price Change and Lagged Repression":
+        tmp = (
+            region_data.groupby(
+                ["price_shock_bin", "repression_level"],
+                observed=False
+            )["protests"]
+            .sum()
+            .unstack()
+            .fillna(0)
+        )
+        tmp.plot(kind="bar", ax=ax)
+        ax.set_xlabel("Lagged Price Change Bin")
+        ax.set_ylabel("Current Protests")
+
+    title = f"{metric} in {region}"
+    if region2_data is not None:
+        title += f" vs {region2}"
+
+    ax.set_title(title)
+    ax.grid(alpha=0.2)
     plt.tight_layout()
-    st.pyplot(fig2, use_container_width=True)
+
+    st.pyplot(fig, use_container_width=True)
+
+st.divider()
+
+# MAP
+st.subheader(f"{metric} Map")
+
+regression_results = None
+regression_coef_col = None
+regression_p_col = None
+color_col = None
+
+if metric == "Protests vs Food Price Change (Lagged)":
+    st.caption(
+        "Districts are shaded by the monthly district-level correlation between protests "
+        "and lagged food price change. This map uses monthly observations only and does "
+        "not change when the chart view is switched between Yearly and Monthly."
+    )
+    map_df = build_correlation_map(df_filtered, "price_change_lag1")
+    color_col = "correlation"
+
+elif metric == "Protests vs Civilian Targeting (Lagged)":
+    st.caption(
+        "Districts are shaded by the monthly district-level correlation between protests "
+        "and lagged civilian targeting. This map uses monthly observations only and does "
+        "not change when the chart view is switched between Yearly and Monthly."
+    )
+    map_df = build_correlation_map(df_filtered, "civilian_targeting_lag1")
+    color_col = "correlation"
+
+elif metric == "Current Protests by Lagged Repression":
+    st.caption(
+        "Districts are shaded by the monthly district-level correlation between current protests "
+        "and lagged civilian targeting. This map uses monthly observations only."
+    )
+    map_df = build_correlation_map(df_filtered, "civilian_targeting_lag1")
+    color_col = "correlation"
+
+elif metric == "Current Protests by Lagged Price Change and Lagged Repression":
+    st.caption(
+        f"Districts with insignificant interaction effects are shown in grey. Colored districts have "
+        f"statistically significant interaction effects (p < {significance_threshold:.2f}) in the monthly "
+        "regression: protests ~ lagged price change + lagged repression + interaction."
+    )
+    regression_results = run_regressions(df_filtered)
+    regression_coef_col = "coef_interaction"
+    regression_p_col = "p_interaction"
+    map_df = prepare_regression_map_df(regression_results, regression_coef_col, regression_p_col)
+    color_col = "coef_sig"
+
+elif metric == "Do Food Prices Matter?":
+    st.caption(
+        f"Districts with insignificant lagged food price effects are shown in grey. Colored districts have "
+        f"statistically significant lagged food price coefficients (p < {significance_threshold:.2f}) "
+        "from the monthly regression."
+    )
+    regression_results = run_regressions(df_filtered)
+    regression_coef_col = "coef_price_lag1"
+    regression_p_col = "p_price_lag1"
+    map_df = prepare_regression_map_df(regression_results, regression_coef_col, regression_p_col)
+    color_col = "coef_sig"
+
+elif metric == "Does Repression Matter?":
+    st.caption(
+        f"Districts with insignificant lagged repression effects are shown in grey. Colored districts have "
+        f"statistically significant lagged repression coefficients (p < {significance_threshold:.2f}) "
+        "from the monthly regression."
+    )
+    regression_results = run_regressions(df_filtered)
+    regression_coef_col = "coef_repression_lag1"
+    regression_p_col = "p_repression_lag1"
+    map_df = prepare_regression_map_df(regression_results, regression_coef_col, regression_p_col)
+    color_col = "coef_sig"
+
+elif metric == "Does Repression Change the Effect of Food Prices?":
+    st.caption(
+        f"Districts with insignificant interaction effects are shown in grey. Colored districts have "
+        f"statistically significant interaction effects (p < {significance_threshold:.2f}) "
+        "from the monthly regression."
+    )
+    regression_results = run_regressions(df_filtered)
+    regression_coef_col = "coef_interaction"
+    regression_p_col = "p_interaction"
+    map_df = prepare_regression_map_df(regression_results, regression_coef_col, regression_p_col)
+    color_col = "coef_sig"
+
+else:
+    st.caption("Map view across districts.")
+    map_df, color_col = build_map_data(df_filtered)
+
+choropleth = gdf.merge(map_df, on="admin1", how="left").copy()
+
+geojson = json.loads(choropleth[["admin1", "geometry"]].to_json())
+lat, lon, zoom = get_map_view(choropleth)
+
+if color_col == "correlation":
+    fig_map = px.choropleth_mapbox(
+        choropleth,
+        geojson=geojson,
+        locations="admin1",
+        featureidkey="properties.admin1",
+        color="correlation",
+        hover_name="admin1",
+        hover_data={
+            "correlation": ":.3f",
+            "n_obs": True
+        },
+        color_continuous_scale="RdBu_r",
+        range_color=(-1, 1),
+        mapbox_style="white-bg",
+        center={"lat": lat, "lon": lon},
+        zoom=zoom,
+        opacity=0.82
+    )
+    fig_map.update_coloraxes(colorbar_title="Correlation")
+
+elif color_col == "coef_sig":
+    grey_df = choropleth[choropleth["is_insignificant"] == True].copy()
+
+    fig_map = px.choropleth_mapbox(
+        grey_df,
+        geojson=geojson,
+        locations="admin1",
+        featureidkey="properties.admin1",
+        color_discrete_sequence=["lightgrey"],
+        hover_name="admin1",
+        hover_data={
+            regression_coef_col: ':.3f',
+            regression_p_col: ':.3f',
+            "r_squared": ':.3f',
+            "n_obs": True
+        },
+        mapbox_style="white-bg",
+        center={"lat": lat, "lon": lon},
+        zoom=zoom,
+        opacity=0.75
+    )
+
+    sig_df = choropleth[choropleth["is_insignificant"] == False].copy()
+
+    fig_sig = px.choropleth_mapbox(
+        sig_df,
+        geojson=geojson,
+        locations="admin1",
+        featureidkey="properties.admin1",
+        color="coef_sig",
+        hover_name="admin1",
+        hover_data={
+            regression_coef_col: ':.3f',
+            regression_p_col: ':.3f',
+            "r_squared": ':.3f',
+            "n_obs": True
+        },
+        color_continuous_scale="RdBu_r",
+        mapbox_style="white-bg",
+        center={"lat": lat, "lon": lon},
+        zoom=zoom,
+        opacity=0.9
+    )
+
+    for tr in fig_sig.data:
+        fig_map.add_trace(tr)
+
+    if metric == "Do Food Prices Matter?":
+        fig_map.update_coloraxes(colorbar_title="Price Effect")
+    elif metric == "Does Repression Matter?":
+        fig_map.update_coloraxes(colorbar_title="Repression Effect")
+    else:
+        fig_map.update_coloraxes(colorbar_title="Interaction Effect")
+
+else:
+    fig_map = px.choropleth_mapbox(
+        choropleth,
+        geojson=geojson,
+        locations="admin1",
+        featureidkey="properties.admin1",
+        color=color_col,
+        hover_name="admin1",
+        color_continuous_scale="OrRd",
+        mapbox_style="white-bg",
+        center={"lat": lat, "lon": lon},
+        zoom=zoom,
+        opacity=0.82
+    )
+    fig_map.update_coloraxes(colorbar_title=color_col)
+
+fig_map.update_layout(
+    height=700,
+    margin={"r": 0, "t": 0, "l": 0, "b": 0}
+)
+
+st.plotly_chart(fig_map, width="stretch")
+
+# REGRESSIONS - ONLY FOR REGRESSION VIEWS
+regression_metrics = {
+    "Do Food Prices Matter?",
+    "Does Repression Matter?",
+    "Does Repression Change the Effect of Food Prices?"
+}
+
+if metric in regression_metrics:
+    st.divider()
+    st.subheader("District-Level Regression Results")
+
+    if regression_results is None:
+        regression_results = run_regressions(df_filtered)
+
+    if regression_results.empty:
+        st.warning("No regressions available.")
+    else:
+        st.dataframe(regression_results, width="stretch")
+
+        fig2, ax2 = plt.subplots(figsize=(10, 6))
+
+        if metric == "Do Food Prices Matter?":
+            plot_col = "coef_price_lag1"
+            plot_title = "Lagged Food Price Effect by District"
+            xlabel = "Coefficient"
+        elif metric == "Does Repression Matter?":
+            plot_col = "coef_repression_lag1"
+            plot_title = "Lagged Repression Effect by District"
+            xlabel = "Coefficient"
+        else:
+            plot_col = "coef_interaction"
+            plot_title = "Interaction Effect by District"
+            xlabel = "Interaction Coefficient"
+
+        coef_plot = regression_results.sort_values(plot_col)
+
+        ax2.barh(
+            coef_plot["admin1"],
+            coef_plot[plot_col]
+        )
+        ax2.set_title(plot_title)
+        ax2.set_xlabel(xlabel)
+        ax2.set_ylabel("District")
+        ax2.grid(axis="x", alpha=0.2)
+
+        plt.tight_layout()
+        st.pyplot(fig2, use_container_width=True)
