@@ -1,38 +1,50 @@
 # Syria Conflict Dashboard
 
-An interactive Streamlit dashboard analyzing conflict dynamics across Syrian regions using ACLED conflict data and food price data.
+An interactive Streamlit dashboard analyzing protests, violence, food prices, and repression across Syrian districts over time.
 
-## Live Dashboard
-🔗 https://syria-conflict-dashboard.streamlit.app/
+## Live App
+[Open Dashboard](https://syria-conflict-dashboard.streamlit.app/)
 
-**Note:** If the app has been inactive, it may need a few seconds to wake up on first load.
+*(App may take a few seconds to wake up.)*
 
-## Research Focus
+## Project Goals
 
-This project examines whether protest activity is associated with:
+- Visualize protests, conflict events, and food prices across Syria
+- Compare districts over time
+- Explore whether food prices and repression relate to protest activity
+- Run district-level exploratory regressions
 
-- Lagged food price changes  
-- Lagged repression (proxied by civilian targeting)  
-- The interaction between economic shocks and repression  
+## Data Used
 
-## Regression Framework
+- ACLED conflict and protest event data
+- WFP food price data
+- Syria administrative boundary shapefiles
 
-- **Dependent Variable:** Protests  
-- **Independent Variables:**  
-  - Lagged food price change  
-  - Lagged civilian targeting  
-  - Interaction term
+## Key Findings
 
-## Dashboard Features
+- Protest dynamics differ sharply across districts
+- Aleppo and Idleb show consistently high protest activity
+- As-Sweida drives the major 2023 protest surge
+- Food prices alone do not uniformly predict protest
+- Repression often correlates positively with later protest activity
+- The strongest evidence supports an interaction effect: economic shocks matter differently depending on repression levels
 
-- Interactive dashboard interface  
-- Compare regions over time  
-- Track protests, battles, riots, remote violence, and civilian targeting  
-- Monitor food prices and price shocks  
-- District-level interactive map  
-- District-specific regression results
+## Methods
 
-## Run Locally
+- Time-series visualization
+- Monthly lags
+- District-level correlations
+- OLS regressions by district
 
-```bash
-streamlit run app.py
+## Limitations
+
+- Observational data (not causal)
+- Small samples in some districts
+- Omitted variables likely matter
+- Event counts do not capture protest size
+
+## Next Steps
+
+- Improve model specification
+- Add more controls
+- Expand case-study annotations
