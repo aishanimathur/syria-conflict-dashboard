@@ -3,7 +3,7 @@
 An interactive Streamlit dashboard analyzing protests, violence, food prices, and repression across Syrian districts over time.
 
 ## Live App
-[Open Dashboard](https://syria-conflict-dashboard.streamlit.app/)
+[Open Dashboard](https://syria-conflict-dashboard-viz.streamlit.app/)
 
 *(App may take a few seconds to wake up.)*
 
