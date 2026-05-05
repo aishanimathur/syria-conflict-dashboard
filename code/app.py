@@ -7,15 +7,23 @@ import plotly.express as px
 import json
 from pathlib import Path
 
-from Data_cleaning_Syria import (
-    load_clean_acled,
-    load_clean_food,
-    build_conflict_panel,
-    merge_food
-)
+try:
+    from code.Data_cleaning_Syria import (
+        load_clean_acled,
+        load_clean_food,
+        build_conflict_panel,
+        merge_food
+    )
+except ImportError:
+    from Data_cleaning_Syria import (
+        load_clean_acled,
+        load_clean_food,
+        build_conflict_panel,
+        merge_food
+    )
 
 # GLOBAL PROJECT PATH
-BASE_DIR = Path(__file__).resolve().parent
+BASE_DIR = Path(__file__).resolve().parents[1]
 
 # PAGE SETUP
 st.set_page_config(
@@ -160,7 +168,6 @@ map_zoom_mode = st.sidebar.radio(
     ["Overall map", "Zoom to selected district"]
 )
 
-# significance cutoff for regression maps
 significance_threshold = 0.05
 
 # PREP DATA
